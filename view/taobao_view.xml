@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<openerp>
+    <data>
+        <!-- 淘宝订单 -->
+        <record id="taobao_order_tree" model="ir.ui.view">
+            <field name="name">taobao.order.tree</field>
+            <field name="model">taobao.order</field>
+            <field name="priority">4</field>
+            <field name="arch" type="xml">
+                <tree string="淘宝订单">
+                    <field name="name"/>
+                    <field name="buyer"/>
+                    <field name="order_date"/>
+                    <field name="order_state"/>
+                    <field name="sync_state"/>
+                </tree>
+            </field>
+        </record>
+
+        <record id="taobao_order_form" model="ir.ui.view">
+            <field name="name">taobao.order.form</field>
+            <field name="model">taobao.order</field>
+            <field name="arch" type="xml">
+                <form string="淘宝订单">
+                    <group>
+                        <group>
+                            <field name="name"/>
+                            <field name="order_state"/>
+                            <field name="buyer"/>
+                            <field name="buyer_detail"/>
+                        </group>
+                        <group>
+                            <field name="order_date"/>
+                            <field name="pay_date"/>
+                            <field name="delivery_date"/>
+                            <field name="end_date"/>
+                        </group>
+                    </group>
+                    <field name="order_line"/>
+                </form>
+            </field>
+        </record>
+
+        <record id="taobao_order_line_tree" model="ir.ui.view">
+            <field name="name">taobao.order.line.tree</field>
+            <field name="model">taobao.order.line</field>
+            <field name="arch" type="xml">
+                <tree string="Order Line" editable="bottom" edit="false" create="false" delete="true">
+                    <field name="product_id"/>
+                    <field name="qty"/>
+                    <field name="price_unit"/>
+                    <field name="line_state"/>
+                </tree>
+            </field>
+        </record>
+
+        <!-- 淘宝订单导入 -->
+        <record id="taobao_order_import_view" model="ir.ui.view">
+            <field name="name">导入淘宝订单</field>
+            <field name="model">taobao.order.import</field>
+            <field name="arch" type="xml">
+                <form string="导入淘宝订单">
+                    <group>
+                        <field name="data"/>
+                    </group>
+                    <footer>
+                        <button name="import_order" string="导入" type="object" class="oe_highlight"/>
+                        or
+                        <button string="取消" class="oe_link" special="cancel" />
+                    </footer>
+                </form>
+            </field>
+        </record>
+
+    </data>
+</openerp>
