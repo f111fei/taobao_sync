@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<openerp>
+    <data>
+        <record id="taobao_order_sync_form" model ="ir.ui.view">
+            <field name="name">taobao.order.sync</field>
+            <field name="model">taobao.order.sync.wizard</field>
+            <field name="arch" type="xml">
+                <form string="淘宝订单同步">
+                        <button name="taobao_order_sync" string="开始同步" type="object" icon="gtk-convert"/>
+                        <button special="cancel" string="取消" icon="gtk-cancel"/>
+                </form>
+            </field>
+        </record>
+
+        <record id="taobao_order_sync_action" model="ir.actions.act_window">
+            <field name="name">淘宝订单同步</field>
+            <field name="type">ir.actions.act_window</field>
+            <field name="src_model">taobao.order</field>
+            <field name="res_model">taobao.order.sync.wizard</field>
+            <field name="view_type">form</field>
+            <field name="view_mode">form</field>
+            <field name="view_id" ref="taobao_order_sync_form"/>
+            <field name="target">new</field>
+            <field name="multi">True</field>
+        </record>
+
+        <record model="ir.values" id="taobao_order_sync">
+            <field name="model_id" ref="taobao.model_taobao_order" />
+            <field name="name">淘宝订单同步</field>
+            <field name="key2">client_action_multi</field>
+            <field name="value" eval="'ir.actions.act_window,' + str(ref('taobao_order_sync_action'))" />
+            <field name="key">action</field>
+            <field name="model">taobao.order</field>
+        </record>
+    </data>
+</openerp>

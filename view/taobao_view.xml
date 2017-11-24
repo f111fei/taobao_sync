@@ -72,5 +72,16 @@
             </field>
         </record>
 
+        <!-- 淘宝商品匹配 -->
+        <record id="taobao_product_match_tree" model="ir.ui.view">
+            <field name="name">taobao.product.match.tree</field>
+            <field name="model">taobao.product.match</field>
+            <field name="arch" type="xml">
+                <tree string="淘宝商品匹配" editable="top">
+                    <field name="product_id"/>
+                    <field name="name"/>
+                </tree>
+            </field>
+        </record>
     </data>
 </openerp>

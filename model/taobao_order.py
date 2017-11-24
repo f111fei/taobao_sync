@@ -53,6 +53,49 @@ class taobao_order(osv.osv):
         ('name_uniq', 'unique(name)', 'Order Reference must be unique!'),
     ]
 
+    def make_sale_order(self, cr, uid, order, context=None):
+        order_obj = self.pool.get('sale.order')
+        line_obj = self.pool.get('sale.order.line')
+        product_match_obj = self.pool.get('taobao.product.match')
+
+        partner_ids = self.pool.get('res.partner').search(cr, uid, [('name', '=', u'淘宝客户')], context = context)
+        partner_id = partner_ids[0]
+
+        order_val = order_obj.onchange_partner_id(cr, uid, [], partner_id, context=context)['value']
+        order_val.update({
+            'name': order.name,
+            'date_order':  order.pay_date,      #付款时间
+            'create_date': order.order_date,    #拍下时间
+            'partner_id': partner_id,
+            'picking_policy': 'one',
+            'order_policy': 'picking',
+            'order_line': [],
+        })
+
+        for line in order.order_line:
+            #添加订单明细行
+            product_id = product_match_obj.find_product(cr, uid, line.product_id, context = context)
+            line_vals = line_obj.product_id_change(cr, uid, [], order_val['pricelist_id'], product_id, qty=line.qty, partner_id=partner_id, context=context)['value']
+            line_vals.update({'product_id': product_id , 'price_unit':line.price_unit } )
+            if line_vals.get('tax_id') != None:
+                line_vals['tax_id'] = [(6, 0, line_vals['tax_id'])]
+            order_val['order_line'].append( (0, 0, line_vals) )
+        
+        order_id = order_obj.create(cr, uid, order_val, context = context)
+        return order_id
+
+    def update_sale_order(self, cr, uid, order, context=None):
+        return True
+
+    def action_sync(self, cr, uid, ids, context=None):
+        for order in self.browse(cr, uid, ids, context=context):
+            if order.sync_state == 'none':
+                self.make_sale_order(cr, uid, order, context=context)
+            elif order.sync_state == 'update':
+                self.update_sale_order(cr, uid, order, context=context)
+        self.write(cr, uid, ids, {'sync_state': 'done'}, context=context)
+        return True
+
 class taobao_order_line(osv.osv):
     _name = 'taobao.order.line'
     _description = u'淘宝订单行'

@@ -16,6 +16,7 @@
     'depends': ['sale'],
     'init_xml': [],
     'data': [
+        'wizard/taobao_order_sync_wizard.xml',
         'view/taobao_view.xml',
         'taobao_action.xml'
      ],
