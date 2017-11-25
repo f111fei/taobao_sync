@@ -42,7 +42,8 @@ class taobao_order(osv.osv):
         'order_state': fields.char(u'订单状态', size=20),
         'buyer_detail': fields.char(u'收件人信息', size=100),
         'order_line': fields.one2many('taobao.order.line', 'order_id', u'淘宝订单行', readonly=True, copy=True),
-        'sync_state': fields.selection([('none', u'未同步'), ('update', u'待更新'), ('done', u'已同步')], u'同步状态', required=True, readonly=True)
+        'sync_state': fields.selection([('none', u'未同步'), ('update', u'待更新'), ('done', u'已同步')], u'同步状态', required=True, readonly=True),
+        'orgin_string': fields.char(u'源数据', readonly=True)
     }
 
     _defaults = {
@@ -52,6 +53,14 @@ class taobao_order(osv.osv):
     _sql_constraints = [
         ('name_uniq', 'unique(name)', 'Order Reference must be unique!'),
     ]
+
+    def make_sale_order_line(self, cr, uid, product_id, partner_id, pricelist_id, qty, price_unit, context=None):
+        line_obj = self.pool.get('sale.order.line')
+        line_vals = line_obj.product_id_change(cr, uid, [], pricelist_id, product_id, qty=qty, partner_id=partner_id, context=context)['value']
+        line_vals.update({'product_id': product_id , 'price_unit':price_unit } )
+        if line_vals.get('tax_id') != None:
+            line_vals['tax_id'] = [(6, 0, line_vals['tax_id'])]
+        return (0, 0, line_vals)
 
     def make_sale_order(self, cr, uid, order, context=None):
         order_obj = self.pool.get('sale.order')
@@ -75,12 +84,15 @@ class taobao_order(osv.osv):
         for line in order.order_line:
             #添加订单明细行
             product_id = product_match_obj.find_product(cr, uid, line.product_id, context = context)
-            line_vals = line_obj.product_id_change(cr, uid, [], order_val['pricelist_id'], product_id, qty=line.qty, partner_id=partner_id, context=context)['value']
-            line_vals.update({'product_id': product_id , 'price_unit':line.price_unit } )
-            if line_vals.get('tax_id') != None:
-                line_vals['tax_id'] = [(6, 0, line_vals['tax_id'])]
-            order_val['order_line'].append( (0, 0, line_vals) )
-        
+            sale_line = self.make_sale_order_line(cr, uid, product_id, partner_id, order_val['pricelist_id'], line.qty, line.price_unit, context=context)
+            order_val['order_line'].append(sale_line)
+
+        if order.freight > 0:
+            #邮费
+            product_id = self.pool.get('product.product').search(cr, uid, [('name', '=', u'邮费')], context = context)[0]
+            sale_line = self.make_sale_order_line(cr, uid, product_id, partner_id, order_val['pricelist_id'], 1, order.freight, context=context)
+            order_val['order_line'].append(sale_line)
+
         order_id = order_obj.create(cr, uid, order_val, context = context)
         return order_id
 
@@ -145,10 +157,7 @@ class taobao_order_import(osv.osv_memory):
             
         return csv_rows
 
-    def create_order(self, cr, uid, order, context=None):
-        order_obj = self.pool.get('taobao.order')
-        line_obj = self.pool.get('taobao.order.line')
-        
+    def create_order_vals(self, order):
         def strptime(time):
             return (datetime.strptime(time, '%Y-%m-%d %H:%M:%S',) - timedelta(hours=8)).strftime('%Y-%m-%d %H:%M:%S')
 
@@ -163,15 +172,36 @@ class taobao_order_import(osv.osv_memory):
             'buyer': order['buyer'],
             'buyer_detail': order['buyer_detail'],
             'order_line': [],
+            'orgin_string': json.dumps(order, sort_keys=True)
         }
+
         for line in order['lines']:
             vals['order_line'].append( (0, 0, line) )
 
+        return vals
+
+
+    def create_order(self, cr, uid, order, context=None):
+        order_obj = self.pool.get('taobao.order')
+        vals = self.create_order_vals(order)
+        vals.update({ 'orgin_string': json.dumps(vals, sort_keys=True) })
         order_obj.create(cr, uid, vals, context = context)
         return True
 
-    def update_order(self, cr, uid, order, context=None):
-        return True
+    def update_order(self, cr, uid, order, id, context=None):
+        order_obj = self.pool.get('taobao.order')
+        taobao_order = order_obj.browse(cr, uid, id, context = context)
+        vals = self.create_order_vals(order)
+        orgin_string = json.dumps(vals, sort_keys=True)
+        if taobao_order.orgin_string == orgin_string:
+            return True
+        vals.update({ 'orgin_string': orgin_string })
+        if taobao_order.sync_state == 'done':
+            vals.update({ 'sync_state': 'update' })
+        for line in taobao_order.order_line:
+            # 删除旧的订单行
+            vals['order_line'].append( (2, line.id) )
+        order_obj.write(cr, uid, [id], vals, context = context)
 
     def marge_orders(self, orders):
         result = []
@@ -216,7 +246,5 @@ class taobao_order_import(osv.osv_memory):
             if not order_ids:
                 self.create_order(cr, uid, order, context)
             else:
-                self.update_order(cr, uid, order, context)
-
-
+                self.update_order(cr, uid, order, order_ids[0], context)
         return True
