@@ -85,6 +85,11 @@ class taobao_order(osv.osv):
         line_obj = self.pool.get('sale.order.line')
         product_match_obj = self.pool.get('taobao.product.match')
 
+        #如果订单已存在，则跳过创建，直接返回订单id
+        order_ids = order_obj.search(cr, uid, [('name', '=', order['name'])], context = context)
+        if order_ids:
+            return order_ids[0]
+
         partner_ids = self.pool.get('res.partner').search(cr, uid, [('name', '=', u'淘宝客户')], context = context)
         partner_id = partner_ids[0]
 
@@ -114,15 +119,44 @@ class taobao_order(osv.osv):
         order_id = order_obj.create(cr, uid, order_val, context = context)
         return order_id
 
-    def update_sale_order(self, cr, uid, order, context=None):
+    def assets_state(self, cr, uid, taobao_order, context=None):
+        state = taobao_order.order_state
+
+        if state == 'not_paid_and_not_send' or state == 'refunding' or state == 'front_paid' or state == 'exceptional':
+           raise osv.except_osv(u'订单同步失败', u'暂不支持该状态下的订单同步，请手动同步: "%s"' % (taobao_order['name']))
+        return True
+
+    def update_sale_order(self, cr, uid, taobao_order, context=None):
+        order_obj = self.pool.get('sale.order')
+        order_ids = order_obj.search(cr, uid, [('name', '=', taobao_order['name'])], context = context)
+        if not order_ids:
+            raise osv.except_osv(u'订单同步失败', u'无法找到对应的销售订单: "%s"' % (taobao_order['name']))
+        sale_order = order_obj.browse(cr, uid, order_ids[0], context = context)
+
+        self.assets_state(cr, uid, taobao_order, context = context)
+
+        if taobao_order.order_state == 'drop':
+            order_obj.action_cancel(cr, uid, order_ids, context = context)
+            return True
+        if taobao_order.order_state == 'not_paid':
+            return True
+
+        order_obj.action_button_confirm(cr, uid, order_ids, context = context)
+
+        if taobao_order.order_state == 'paid':
+            return True
+
+        # 发货
+        # 确认发票
+
         return True
 
     def action_sync(self, cr, uid, ids, context=None):
-        for order in self.browse(cr, uid, ids, context=context):
-            if order.sync_state == 'none':
-                self.create_sale_order(cr, uid, order, context=context)
-            elif order.sync_state == 'update':
-                self.update_sale_order(cr, uid, order, context=context)
+        for taobao_order in self.browse(cr, uid, ids, context=context):
+            if taobao_order.sync_state == 'none':
+                self.create_sale_order(cr, uid, taobao_order, context=context)
+            if taobao_order.sync_state != 'done':
+                self.update_sale_order(cr, uid, taobao_order, context=context)
         self.write(cr, uid, ids, {'sync_state': 'done'}, context=context)
         return True
 
