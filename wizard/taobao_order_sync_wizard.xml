@@ -6,8 +6,13 @@
             <field name="model">taobao.order.sync.wizard</field>
             <field name="arch" type="xml">
                 <form string="淘宝订单同步">
-                        <button name="taobao_order_sync" string="开始同步" type="object" icon="gtk-convert"/>
-                        <button special="cancel" string="取消" icon="gtk-cancel"/>
+                        <group>
+                            <field name="force"/>
+                        </group>
+                        <footer>
+                            <button name="taobao_order_sync" string="开始同步" type="object" icon="gtk-convert"/>
+                            <button special="cancel" string="取消" icon="gtk-cancel"/>
+                        </footer>
                 </form>
             </field>
         </record>

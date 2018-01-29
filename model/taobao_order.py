@@ -135,27 +135,49 @@ class taobao_order(osv.osv):
 
         self.assets_state(cr, uid, taobao_order, context = context)
 
+        # 取消订单
         if taobao_order.order_state == 'drop':
             order_obj.action_cancel(cr, uid, order_ids, context = context)
             return True
+
+        # 未支付，不改变状态
         if taobao_order.order_state == 'not_paid':
             return True
 
+        # 已支付，先确认订单
         order_obj.action_button_confirm(cr, uid, order_ids, context = context)
 
         if taobao_order.order_state == 'paid':
             return True
 
+        # 检查库存可用
+        stock_picking_obj = self.pool.get('stock.picking')
+        for pick in sale_order.picking_ids:
+            stock_picking_obj.action_assign(cr, uid, pick.ids, context = context)
+            if pick.state != 'assigned':
+                to_move_names = [x.name for x in pick.move_lines if x.state not in ('draft', 'cancel', 'assigned', 'done')]
+                display_name = ','.join(to_move_names)
+                raise osv.except_osv(u'订单同步失败', u'下面产品无法发货: "%s"。请检查库存' % (display_name))
+        
         # 发货
+        for pick in sale_order.picking_ids:
+            pick_context = context.copy()
+            pick_context.update({
+                'active_model': 'stock.picking',
+                'active_ids': pick.ids,
+                'active_id': len(pick.ids) and pick.ids[0] or False
+            })
+            stock_picking_obj.do_transfer(cr, uid, pick.ids, context = pick_context)
+
         # 确认发票
 
         return True
 
     def action_sync(self, cr, uid, ids, context=None):
         for taobao_order in self.browse(cr, uid, ids, context=context):
-            if taobao_order.sync_state == 'none':
+            if taobao_order.sync_state == 'none' or context['force']:
                 self.create_sale_order(cr, uid, taobao_order, context=context)
-            if taobao_order.sync_state != 'done':
+            if taobao_order.sync_state != 'done' or context['force']:
                 self.update_sale_order(cr, uid, taobao_order, context=context)
         self.write(cr, uid, ids, {'sync_state': 'done'}, context=context)
         return True
