@@ -4,6 +4,7 @@ try:
     from cStringIO import StringIO
 except ImportError:
     from StringIO import StringIO
+import re
 import base64
 import csv, json
 from datetime import datetime, timedelta
@@ -21,11 +22,24 @@ keymap[u'交易结束时间'] = 'end_date'
 keymap[u'运费'] = 'freight'
 keymap[u'订单状态'] = 'order_state'
 keymap[u'收件人信息'] = 'buyer_detail'
-
+keymap[u'收件人'] = 'buyer_detail'
 keymap[u'属性'] = 'product_id'
 keymap[u'数量'] = 'qty'
 keymap[u'实际单价'] = 'price_unit'
 keymap[u'子订单状态'] = 'line_state'
+
+statemap = {
+    u'等待买家付款': 'not_paid',
+    u'买家已付款': 'paid',
+    u'卖家已发货': 'send',
+    u'已发货': 'send',
+    u'交易成功': 'success',
+    u'交易关闭': 'drop',
+    u'待付款和待发货订单': 'not_paid_and_not_send',
+    u'退款中的订单': 'refunding',
+    u'定金已付': 'front_paid',
+    u'异常订单': 'exceptional'
+}
 
 class taobao_order(osv.osv):
     _name = 'taobao.order'
@@ -39,7 +53,11 @@ class taobao_order(osv.osv):
         'delivery_date': fields.datetime(u'发货时间', select=True),
         'end_date': fields.datetime(u'交易结束时间', select=True),
         'freight': fields.float(u'运费'),
-        'order_state': fields.char(u'订单状态', size=20),
+        'order_state': fields.selection([
+            ('not_paid', u'等待买家付款'), ('paid', u'买家已付款'), ('send', u'卖家已发货'),
+            ('success', u'交易成功'), ('drop', u'交易关闭'), ('not_paid_and_not_send', u'待付款和待发货订单'),
+            ('refunding', u'退款中的订单'), ('front_paid', u'定金已付'), ('exceptional', u'异常订单')
+        ], u'订单状态', required=True),
         'buyer_detail': fields.char(u'收件人信息', size=100),
         'order_line': fields.one2many('taobao.order.line', 'order_id', u'淘宝订单行', readonly=True, copy=True),
         'sync_state': fields.selection([('none', u'未同步'), ('update', u'待更新'), ('done', u'已同步')], u'同步状态', required=True, readonly=True),
@@ -54,7 +72,7 @@ class taobao_order(osv.osv):
         ('name_uniq', 'unique(name)', 'Order Reference must be unique!'),
     ]
 
-    def make_sale_order_line(self, cr, uid, product_id, partner_id, pricelist_id, qty, price_unit, context=None):
+    def create_sale_order_line(self, cr, uid, product_id, partner_id, pricelist_id, qty, price_unit, context=None):
         line_obj = self.pool.get('sale.order.line')
         line_vals = line_obj.product_id_change(cr, uid, [], pricelist_id, product_id, qty=qty, partner_id=partner_id, context=context)['value']
         line_vals.update({'product_id': product_id , 'price_unit':price_unit } )
@@ -62,7 +80,7 @@ class taobao_order(osv.osv):
             line_vals['tax_id'] = [(6, 0, line_vals['tax_id'])]
         return (0, 0, line_vals)
 
-    def make_sale_order(self, cr, uid, order, context=None):
+    def create_sale_order(self, cr, uid, order, context=None):
         order_obj = self.pool.get('sale.order')
         line_obj = self.pool.get('sale.order.line')
         product_match_obj = self.pool.get('taobao.product.match')
@@ -84,13 +102,13 @@ class taobao_order(osv.osv):
         for line in order.order_line:
             #添加订单明细行
             product_id = product_match_obj.find_product(cr, uid, line.product_id, context = context)
-            sale_line = self.make_sale_order_line(cr, uid, product_id, partner_id, order_val['pricelist_id'], line.qty, line.price_unit, context=context)
+            sale_line = self.create_sale_order_line(cr, uid, product_id, partner_id, order_val['pricelist_id'], line.qty, line.price_unit, context=context)
             order_val['order_line'].append(sale_line)
 
         if order.freight > 0:
             #邮费
             product_id = self.pool.get('product.product').search(cr, uid, [('name', '=', u'邮费')], context = context)[0]
-            sale_line = self.make_sale_order_line(cr, uid, product_id, partner_id, order_val['pricelist_id'], 1, order.freight, context=context)
+            sale_line = self.create_sale_order_line(cr, uid, product_id, partner_id, order_val['pricelist_id'], 1, order.freight, context=context)
             order_val['order_line'].append(sale_line)
 
         order_id = order_obj.create(cr, uid, order_val, context = context)
@@ -102,7 +120,7 @@ class taobao_order(osv.osv):
     def action_sync(self, cr, uid, ids, context=None):
         for order in self.browse(cr, uid, ids, context=context):
             if order.sync_state == 'none':
-                self.make_sale_order(cr, uid, order, context=context)
+                self.create_sale_order(cr, uid, order, context=context)
             elif order.sync_state == 'update':
                 self.update_sale_order(cr, uid, order, context=context)
         self.write(cr, uid, ids, {'sync_state': 'done'}, context=context)
@@ -134,41 +152,51 @@ class taobao_order_import(osv.osv_memory):
         # read the first line of the file (it contains columns titles);
 
         title = []
+        name_column = 0
         for row in reader:
             for i in range(len(row)):
-                key = row[i].decode("utf-8")
+                key = row[i].decode("utf-8-sig")
+                if key == u'宝贝名称':
+                    name_column = i
                 if keymap.has_key(key):
                     title.append(keymap[key])
                 else:
                     title.append('__' + key)
             break
-        linenum = 0
+
         for row in reader:
             row_data = {}
             for i in range(len(title)):
                 key = title[i]
                 extra_col = key.startswith('__')
                 if not extra_col:
-                    value = row[i].decode("utf-8")
+                    value = row[i].decode("utf-8-sig")
                     if value.find('="') == 0:
                         value = value.replace('="', '').replace('"', '')
+                    if key == 'product_id' and value.strip()=='' :
+                        value = row[name_column].decode("utf-8-sig")
                     row_data[key] = value
             csv_rows.append(row_data)
             
         return csv_rows
 
-    def create_order_vals(self, order):
-        def strptime(time):
-            return (datetime.strptime(time, '%Y-%m-%d %H:%M:%S',) - timedelta(hours=8)).strftime('%Y-%m-%d %H:%M:%S')
+    def strptime(self, time):
+        if not time.strip():
+            return None
+        format = '%Y-%m-%d %H:%M'
+        if re.search(r'\d+-\d+-\d+ \d+:\d+:\d+', time):
+            format = '%Y-%m-%d %H:%M:%S'
+        return (datetime.strptime(time, format,) - timedelta(hours=8)).strftime(format)
 
+    def create_order_vals(self, order):
         vals = {
             'name': order['name'],
-            'order_date': strptime(order['order_date']),
-            'pay_date': strptime(order['pay_date']),
-            'delivery_date': strptime(order['delivery_date']),
-            'end_date': strptime(order['end_date']),
+            'order_date': self.strptime(order['order_date']),
+            'pay_date': self.strptime(order['pay_date']),
+            'delivery_date': self.strptime(order['delivery_date']),
+            'end_date': self.strptime(order['end_date']),
             'freight': order['freight'],
-            'order_state': order['order_state'],
+            'order_state': statemap[order['order_state']],
             'buyer': order['buyer'],
             'buyer_detail': order['buyer_detail'],
             'order_line': [],
@@ -220,15 +248,20 @@ class taobao_order_import(osv.osv_memory):
             del order['line_state']
             order['lines'] = [line]
             return order
-            
+
+        last_order_name = ""    
         for order in orders:
             new_order = create_line(order)
+            if not new_order['name'].strip():
+                new_order['name'] = last_order_name
+
             if order_dic.has_key(new_order['name']):
                 last_order = order_dic[new_order['name']]
                 last_order['lines'] = last_order['lines'] + new_order['lines']
             else:
                 result.append(new_order)
                 order_dic[new_order['name']] = new_order
+            last_order_name = new_order['name']
         return result
 
 
