@@ -9,6 +9,7 @@ import base64
 import csv, json
 from datetime import datetime, timedelta
 from openerp.osv import fields,osv
+from openerp import api,fields as hfields
 
 keymap = {}
 keymap[u'订单编号'] = 'name'
@@ -99,8 +100,8 @@ class taobao_order(osv.osv):
             'date_order':  order.pay_date,      #付款时间
             'create_date': order.order_date,    #拍下时间
             'partner_id': partner_id,
-            'picking_policy': 'one',
-            'order_policy': 'picking',
+            'picking_policy': 'direct',
+            'order_policy': 'manual',
             'order_line': [],
         })
 
@@ -145,7 +146,8 @@ class taobao_order(osv.osv):
             return True
 
         # 已支付，先确认订单
-        order_obj.action_button_confirm(cr, uid, order_ids, context = context)
+        if sale_order.state == 'draft':
+            order_obj.action_button_confirm(cr, uid, order_ids, context = context)
 
         if taobao_order.order_state == 'paid':
             return True
@@ -153,7 +155,10 @@ class taobao_order(osv.osv):
         # 检查库存可用
         stock_picking_obj = self.pool.get('stock.picking')
         for pick in sale_order.picking_ids:
-            stock_picking_obj.action_assign(cr, uid, pick.ids, context = context)
+            if pick.state == 'done':
+                continue
+            if pick.state == 'confirmed':
+                stock_picking_obj.action_assign(cr, uid, pick.ids, context = context)
             if pick.state != 'assigned':
                 to_move_names = [x.name for x in pick.move_lines if x.state not in ('draft', 'cancel', 'assigned', 'done')]
                 display_name = ','.join(to_move_names)
@@ -161,6 +166,8 @@ class taobao_order(osv.osv):
         
         # 发货
         for pick in sale_order.picking_ids:
+            if pick.state == 'done':
+                continue
             pick_context = context.copy()
             pick_context.update({
                 'active_model': 'stock.picking',
@@ -170,7 +177,43 @@ class taobao_order(osv.osv):
             stock_picking_obj.do_transfer(cr, uid, pick.ids, context = pick_context)
 
         # 确认发票
+        invoice_obj = self.pool.get('account.invoice')
+        if not sale_order.invoice_exists:
+            vals = order_obj.manual_invoice(cr, uid, order_ids, context = context)
+            inv_id = vals['res_id']
+        else:
+            inv_id = sale_order.invoice_ids[0].id
+        
+        for inv in sale_order.invoice_ids:
+            if inv.state == 'draft':
+                invoice_obj.signal_workflow(cr, uid, [inv.id], 'invoice_open')
 
+        if taobao_order.order_state == 'send':
+            return True
+
+        # 确认付款   inv.state == 'open'
+        journal_pool = self.pool.get('account.journal')
+        journal_id = journal_pool.search(cr, uid, [('name', '=', u'银行')], context = context)[0]
+        for inv in sale_order.invoice_ids:
+            if inv.state != 'open':
+                continue
+            # inv.pay_only(
+            #     pay_amount=inv.amount_total,
+            #     pay_account_id=inv.account_id.id,
+            #     period_id=inv.period_id.id,
+            #     pay_journal_id=journal_id
+            # )
+            # vals = invoice_obj.invoice_pay_customer(cr, uid, [inv_id], context = context)
+            # voucher_obj = self.pool.get('account.voucher')
+            # accunt_voucher = voucher_obj.browse(cr, uid, vals['view_id'], context = context)
+
+            # journal_pool = self.pool.get('account.journal')
+            # journal_id = journal_pool.search(cr, uid, [('name', '=', u'银行')], context = context)[0]
+            # vals = voucher_obj.onchange_journal(cr, uid, [], journal_id, accunt_voucher['line_ids'],
+            #         accunt_voucher['tax_id'], accunt_voucher['partner_id'], accunt_voucher['date'],
+            #         accunt_voucher['amount'], 'receipt', accunt_voucher['company_id'], context = context)
+            # accunt_voucher.update(vals['value'])
+            # voucher_obj.button_proforma_voucher(cr, uid, [accunt_voucher.id], context = context)
         return True
 
     def action_sync(self, cr, uid, ids, context=None):
