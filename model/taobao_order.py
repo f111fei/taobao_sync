@@ -9,7 +9,6 @@ import base64
 import csv, json
 from datetime import datetime, timedelta
 from openerp.osv import fields,osv
-from openerp import api,fields as hfields
 
 keymap = {}
 keymap[u'订单编号'] = 'name'
@@ -194,26 +193,20 @@ class taobao_order(osv.osv):
         # 确认付款   inv.state == 'open'
         journal_pool = self.pool.get('account.journal')
         journal_id = journal_pool.search(cr, uid, [('name', '=', u'银行')], context = context)[0]
+        journal = journal_pool.browse(cr, uid, [journal_id], context = context)[0]
         for inv in sale_order.invoice_ids:
             if inv.state != 'open':
                 continue
-            # inv.pay_only(
-            #     pay_amount=inv.amount_total,
-            #     pay_account_id=inv.account_id.id,
-            #     period_id=inv.period_id.id,
-            #     pay_journal_id=journal_id
-            # )
-            # vals = invoice_obj.invoice_pay_customer(cr, uid, [inv_id], context = context)
-            # voucher_obj = self.pool.get('account.voucher')
-            # accunt_voucher = voucher_obj.browse(cr, uid, vals['view_id'], context = context)
-
-            # journal_pool = self.pool.get('account.journal')
-            # journal_id = journal_pool.search(cr, uid, [('name', '=', u'银行')], context = context)[0]
-            # vals = voucher_obj.onchange_journal(cr, uid, [], journal_id, accunt_voucher['line_ids'],
-            #         accunt_voucher['tax_id'], accunt_voucher['partner_id'], accunt_voucher['date'],
-            #         accunt_voucher['amount'], 'receipt', accunt_voucher['company_id'], context = context)
-            # accunt_voucher.update(vals['value'])
-            # voucher_obj.button_proforma_voucher(cr, uid, [accunt_voucher.id], context = context)
+            inv.pay_and_reconcile(
+                pay_amount=inv.amount_total,
+                pay_account_id=journal.default_debit_account_id.id,
+                period_id=inv.period_id.id,
+                pay_journal_id=journal_id,
+                writeoff_acc_id=journal.default_debit_account_id.id,
+                writeoff_period_id=inv.period_id.id,
+                writeoff_journal_id=journal_id,
+                name='/'
+            )
         return True
 
     def action_sync(self, cr, uid, ids, context=None):
