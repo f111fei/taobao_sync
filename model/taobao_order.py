@@ -148,6 +148,7 @@ class taobao_order(osv.osv):
 
         # 检查库存可用
         stock_picking_obj = self.pool.get('stock.picking')
+        stock_move_obj = self.pool.get('stock.move')
         for pick in sale_order.picking_ids:
             if pick.state == 'done':
                 continue
@@ -168,7 +169,12 @@ class taobao_order(osv.osv):
                 'active_ids': pick.ids,
                 'active_id': len(pick.ids) and pick.ids[0] or False
             })
+            # 设置发货时间
+            stock_picking_obj.write(cr, uid, pick.ids, {'date_done': taobao_order.delivery_date}, context=context)
             stock_picking_obj.do_transfer(cr, uid, pick.ids, context = pick_context)
+            for move_line in pick.move_lines:
+                stock_move_obj.write(cr, uid, move_line.ids, {'date': taobao_order.delivery_date}, context=context)
+
 
         # 确认发票
         invoice_obj = self.pool.get('account.invoice')
@@ -180,6 +186,7 @@ class taobao_order(osv.osv):
         
         for inv in sale_order.invoice_ids:
             if inv.state == 'draft':
+                inv.write({'date_invoice': taobao_order.delivery_date, 'date_due': taobao_order.delivery_date})
                 invoice_obj.signal_workflow(cr, uid, [inv.id], 'invoice_open')
 
         if taobao_order.order_state == 'send':
@@ -192,13 +199,17 @@ class taobao_order(osv.osv):
         for inv in sale_order.invoice_ids:
             if inv.state != 'open':
                 continue
+            # 设置发票确认日期
+            inv = inv.with_context(date_p=taobao_order.end_date)
+            inv.write({'date_due': taobao_order.end_date})
+            period = inv.period_id.with_context(context).find(taobao_order.end_date)[:1]
             inv.pay_and_reconcile(
                 pay_amount=inv.amount_total,
                 pay_account_id=journal.default_debit_account_id.id,
-                period_id=inv.period_id.id,
+                period_id=period.id,
                 pay_journal_id=journal_id,
                 writeoff_acc_id=journal.default_debit_account_id.id,
-                writeoff_period_id=inv.period_id.id,
+                writeoff_period_id=period.id,
                 writeoff_journal_id=journal_id,
                 name='/'
             )
