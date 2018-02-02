@@ -27,13 +27,15 @@
                             <field name="name"/>
                             <field name="order_state"/>
                             <field name="buyer"/>
-                            <field name="buyer_detail"/>
+                            <field name="total_price"/>
+                            <field name="freight"/>
                         </group>
                         <group>
                             <field name="order_date"/>
                             <field name="pay_date"/>
                             <field name="delivery_date"/>
                             <field name="end_date"/>
+                            <field name="buyer_detail"/>
                         </group>
                     </group>
                     <field name="order_line"/>

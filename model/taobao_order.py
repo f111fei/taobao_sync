@@ -15,6 +15,7 @@ class taobao_order(osv.osv):
         'delivery_date': fields.datetime(u'发货时间', select=True),
         'end_date': fields.datetime(u'交易结束时间', select=True),
         'freight': fields.float(u'运费'),
+        'total_price': fields.float(u'总价'),
         'order_state': fields.selection([
             ('not_paid', u'等待买家付款'), ('paid', u'买家已付款'), ('send', u'卖家已发货'),
             ('success', u'交易成功'), ('drop', u'交易关闭'), ('not_paid_and_not_send', u'待付款和待发货订单'),

@@ -32,6 +32,7 @@ keymap[u'属性'] = 'product_id'
 keymap[u'数量'] = 'qty'
 keymap[u'实际单价'] = 'price_unit'
 keymap[u'子订单状态'] = 'line_state'
+keymap[u'总价'] = 'total_price'
 
 statemap = {
     u'等待买家付款': 'not_paid',
@@ -86,6 +87,7 @@ class taobao_order_import(osv.osv_memory):
                     value = str(row[i]).decode("utf-8-sig")
                     if value.find('="') == 0:
                         value = value.replace('="', '').replace('"', '')
+                    # 如果商品属性列的值不存在，使用宝贝名称代替属性
                     if key == 'product_id' and value.strip()=='' :
                         value = str(row[name_column]).decode("utf-8-sig")
                     row_data[key] = value
@@ -143,6 +145,7 @@ class taobao_order_import(osv.osv_memory):
             'delivery_date': self.strptime(order['delivery_date']),
             'end_date': self.strptime(order['end_date']),
             'freight': order['freight'],
+            'total_price': order['total_price'],
             'order_state': statemap[order['order_state']],
             'buyer': order['buyer'],
             'buyer_detail': order['buyer_detail'],
@@ -177,6 +180,7 @@ class taobao_order_import(osv.osv_memory):
             vals['order_line'].append( (2, line.id) )
         order_obj.write(cr, uid, [id], vals, context = context)
 
+    # 合并订单行
     def marge_orders(self, orders):
         result = []
         order_dic = {}
@@ -198,9 +202,11 @@ class taobao_order_import(osv.osv_memory):
         last_order_name = ""    
         for order in orders:
             new_order = create_line(order)
+            # 给没有订单号的订单行添加订单号
             if not new_order['name'].strip():
                 new_order['name'] = last_order_name
 
+            # 如果已存在订单号，则合并订单
             if order_dic.has_key(new_order['name']):
                 last_order = order_dic[new_order['name']]
                 last_order['lines'] = last_order['lines'] + new_order['lines']
