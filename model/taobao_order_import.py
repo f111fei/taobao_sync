@@ -34,7 +34,7 @@ keymap[u'实际单价'] = 'price_unit'
 keymap[u'子订单状态'] = 'line_state'
 keymap[u'总价'] = 'total_price'
 
-statemap = {
+order_statemap = {
     u'等待买家付款': 'not_paid',
     u'买家已付款': 'paid',
     u'卖家已发货': 'send',
@@ -45,6 +45,15 @@ statemap = {
     u'退款中的订单': 'refunding',
     u'定金已付': 'front_paid',
     u'异常订单': 'exceptional'
+}
+
+order_line_statemap = {
+    u'等待付款': 'wait_pay',
+    u'等待发货': 'wait_send',
+    u'卖家已发货': 'send',
+    u'交易成功': 'success',
+    u'自动关闭': 'close',
+    u'已取消': 'cancel'
 }
 
 class taobao_order_import(osv.osv_memory):
@@ -146,7 +155,7 @@ class taobao_order_import(osv.osv_memory):
             'end_date': self.strptime(order['end_date']),
             'freight': order['freight'],
             'total_price': order['total_price'],
-            'order_state': statemap[order['order_state']],
+            'order_state': order_statemap[order['order_state']],
             'buyer': order['buyer'],
             'buyer_detail': order['buyer_detail'],
             'order_line': [],
@@ -190,7 +199,7 @@ class taobao_order_import(osv.osv_memory):
                 'product_id': order['product_id'],
                 'qty': order['qty'],
                 'price_unit': order['price_unit'],
-                'line_state': order['line_state']
+                'line_state': order_line_statemap[order['line_state']]
             }
             del order['product_id']
             del order['qty']

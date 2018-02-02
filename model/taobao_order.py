@@ -37,8 +37,8 @@ class taobao_order(osv.osv):
 
     def create_sale_order_line(self, cr, uid, product_id, partner_id, pricelist_id, qty, price_unit, context=None):
         line_obj = self.pool.get('sale.order.line')
-        line_vals = line_obj.product_id_change(cr, uid, [], pricelist_id, product_id, qty=qty, partner_id=partner_id, context=context)['value']
-        line_vals.update({'product_id': product_id , 'price_unit':price_unit } )
+        line_vals = line_obj.product_id_change(cr, uid, [], pricelist_id, product_id, qty=qty, uom=1, partner_id=partner_id, context=context)['value']
+        line_vals.update({'product_id': product_id , 'price_unit':price_unit, 'product_uom_qty': qty } )
         if line_vals.get('tax_id') != None:
             line_vals['tax_id'] = [(6, 0, line_vals['tax_id'])]
         return (0, 0, line_vals)
@@ -53,6 +53,23 @@ class taobao_order(osv.osv):
         if order_ids:
             return order_ids[0]
 
+        order_val = self.remount_sale_order_val(cr, uid, order, context = context)
+
+        order_id = order_obj.create(cr, uid, order_val, context = context)
+        return order_id
+
+    def assets_state(self, cr, uid, taobao_order, context=None):
+        state = taobao_order.order_state
+
+        if state == 'not_paid_and_not_send' or state == 'refunding' or state == 'front_paid' or state == 'exceptional':
+           raise osv.except_osv(u'订单同步失败', u'暂不支持该状态下的订单同步，请手动同步: "%s"' % (taobao_order['name']))
+        return True
+
+    def remount_sale_order_val(self, cr, uid, order, context=None):
+        order_obj = self.pool.get('sale.order')
+        line_obj = self.pool.get('sale.order.line')
+        product_match_obj = self.pool.get('taobao.product.match')
+        
         partner_ids = self.pool.get('res.partner').search(cr, uid, [('name', '=', u'淘宝客户')], context = context)
         partner_id = partner_ids[0]
 
@@ -70,7 +87,11 @@ class taobao_order(osv.osv):
         for line in order.order_line:
             #添加订单明细行
             product_id = product_match_obj.find_product(cr, uid, line.product_id, context = context)
-            sale_line = self.create_sale_order_line(cr, uid, product_id, partner_id, order_val['pricelist_id'], line.qty, line.price_unit, context=context)
+            qty = line.qty
+            # 如果子订单行自动关闭或者已取消，则按照数量0发货
+            if line.line_state == 'close' or line.line_state == 'cancel':
+                qty = 0
+            sale_line = self.create_sale_order_line(cr, uid, product_id, partner_id, order_val['pricelist_id'], qty, line.price_unit, context=context)
             order_val['order_line'].append(sale_line)
 
         if order.freight > 0:
@@ -78,16 +99,7 @@ class taobao_order(osv.osv):
             product_id = self.pool.get('product.product').search(cr, uid, [('name', '=', u'邮费')], context = context)[0]
             sale_line = self.create_sale_order_line(cr, uid, product_id, partner_id, order_val['pricelist_id'], 1, order.freight, context=context)
             order_val['order_line'].append(sale_line)
-
-        order_id = order_obj.create(cr, uid, order_val, context = context)
-        return order_id
-
-    def assets_state(self, cr, uid, taobao_order, context=None):
-        state = taobao_order.order_state
-
-        if state == 'not_paid_and_not_send' or state == 'refunding' or state == 'front_paid' or state == 'exceptional':
-           raise osv.except_osv(u'订单同步失败', u'暂不支持该状态下的订单同步，请手动同步: "%s"' % (taobao_order['name']))
-        return True
+        return order_val
 
     def update_sale_order(self, cr, uid, taobao_order, context=None):
         order_obj = self.pool.get('sale.order')
@@ -95,6 +107,22 @@ class taobao_order(osv.osv):
         if not order_ids:
             raise osv.except_osv(u'订单同步失败', u'无法找到对应的销售订单: "%s"' % (taobao_order['name']))
         sale_order = order_obj.browse(cr, uid, order_ids[0], context = context)
+
+        # 更新订单基本信息，包括订单行数据
+        order_val = self.remount_sale_order_val(cr, uid, taobao_order, context = context)
+        sale_order_lines = len(sale_order.order_line)
+        for i, line in enumerate(order_val['order_line']):
+            # 更新旧的订单行
+            if i < sale_order_lines:
+                sale_order_line = sale_order.order_line[i]
+                order_val['order_line'][i] = (1, sale_order_line.id, line[2])
+
+        # 如果之前的行数多余现在的行数，则删除多余的订单行
+        if len(order_val['order_line']) < sale_order_lines:
+            for i in range(order_val['order_line'], sale_order_lines):
+                order_val['order_line'].append( (2, sale_order.order_line[i].id) )
+
+        order_obj.write(cr, uid, order_ids, order_val, context = context)
 
         self.assets_state(cr, uid, taobao_order, context = context)
 
@@ -107,10 +135,14 @@ class taobao_order(osv.osv):
         if taobao_order.order_state == 'not_paid':
             return True
 
+        # # TODO: 已支付，未发货也不改变状态，因为买家可能在发货之前退款或者退部分货? 待确认
+        # if taobao_order.order_state == 'paid':
+        #     return True
+
         # 已支付，先确认订单
         if sale_order.state == 'draft':
             order_obj.action_button_confirm(cr, uid, order_ids, context = context)
-
+        
         if taobao_order.order_state == 'paid':
             return True
 
@@ -189,5 +221,8 @@ class taobao_order_line(osv.osv):
         'product_id': fields.char(u'名称'),
         'qty': fields.float(u'数量'),
         'price_unit': fields.float(u'单价', required=True),
-        'line_state': fields.char(u'订单状态'),
+        'line_state': fields.selection([
+            ('wait_pay', u'等待付款'), ('wait_send', u'等待发货'), ('send', u'已发货'),
+            ('success', u'交易成功'), ('close', u'自动关闭'), ('cancel', u'已取消')
+        ], u'子订单状态', required=True,  readonly=True),
     }
