@@ -61,6 +61,7 @@
             <field name="arch" type="xml">
                 <form string="导入淘宝订单">
                     <group>
+                        <field name="format"/>
                         <field name="data"/>
                     </group>
                     <footer>

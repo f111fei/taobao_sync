@@ -1,10 +1,16 @@
 # -*- encoding: utf-8 -*-
+
+import sys
+reload(sys)
+sys.setdefaultencoding('utf-8')
+
 try:
     from cStringIO import StringIO
 except ImportError:
     from StringIO import StringIO
 import re
 import base64
+import xlrd
 import csv, json
 from datetime import datetime, timedelta
 from openerp.osv import fields,osv
@@ -45,8 +51,46 @@ class taobao_order_import(osv.osv_memory):
     _description = u"淘宝订单导入"
 
     _columns = {
+        'format': fields.selection([('csv', u'CSV文件'), ('xls', u'XLS/XLSX文件')], u'文件类型', required=True),
         'data': fields.binary(u'文件', required=True)
     }
+
+    _defaults = {
+        'format': 'xls'
+    }
+
+    def read_xls(self, data):
+        xls_rows = []
+        workbook = xlrd.open_workbook(file_contents=base64.decodestring(data))
+        sheet = workbook.sheet_by_index(0)
+        title_row = sheet.row_values(0)
+        nrows = sheet.nrows
+        title_list = []
+        name_column = 0
+        for i in range(len(title_row)):
+            key = title_row[i]
+            if key == u'宝贝名称':
+                name_column = i
+            if keymap.has_key(key):
+                title_list.append(keymap[key])
+            else:
+                title_list.append('__' + key)
+
+        for i in range(1, nrows):
+            row = sheet.row_values(i)
+            row_data = {}
+            for i in range(len(title_list)):
+                key = title_list[i]
+                extra_col = key.startswith('__')
+                if not extra_col:
+                    value = str(row[i]).decode("utf-8-sig")
+                    if value.find('="') == 0:
+                        value = value.replace('="', '').replace('"', '')
+                    if key == 'product_id' and value.strip()=='' :
+                        value = str(row[name_column]).decode("utf-8-sig")
+                    row_data[key] = value
+            xls_rows.append(row_data)
+        return xls_rows
 
     def read_csv(self, data):
         csv_rows = []
@@ -54,7 +98,7 @@ class taobao_order_import(osv.osv_memory):
         reader = csv.reader(StringIO(base64.decodestring(data)), quotechar='"', delimiter=',')
         # read the first line of the file (it contains columns titles);
 
-        title = []
+        title_list = []
         name_column = 0
         for row in reader:
             for i in range(len(row)):
@@ -62,15 +106,15 @@ class taobao_order_import(osv.osv_memory):
                 if key == u'宝贝名称':
                     name_column = i
                 if keymap.has_key(key):
-                    title.append(keymap[key])
+                    title_list.append(keymap[key])
                 else:
-                    title.append('__' + key)
+                    title_list.append('__' + key)
             break
 
         for row in reader:
             row_data = {}
-            for i in range(len(title)):
-                key = title[i]
+            for i in range(len(title_list)):
+                key = title_list[i]
                 extra_col = key.startswith('__')
                 if not extra_col:
                     value = row[i].decode("utf-8-sig")
@@ -172,7 +216,10 @@ class taobao_order_import(osv.osv_memory):
         if context is None:
             context = {}
         this = self.browse(cr, uid, ids[0])
-        orders = self.read_csv(this.data)
+        if this.format == 'xls':
+            orders = self.read_xls(this.data)
+        else:
+            orders = self.read_csv(this.data)
         orders = self.marge_orders(orders)
 
         for order in orders:
