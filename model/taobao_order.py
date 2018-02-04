@@ -73,10 +73,13 @@ class taobao_order(osv.osv):
         partner_ids = self.pool.get('res.partner').search(cr, uid, [('name', '=', u'淘宝客户')], context = context)
         partner_id = partner_ids[0]
 
+        note = '昵称: ' + order.buyer + '\n' + '地址: ' + order.buyer_detail
+
         order_val = order_obj.onchange_partner_id(cr, uid, [], partner_id, context=context)['value']
         order_val.update({
             'name': order.name,
-            'date_order':  order.pay_date,      #付款时间
+            'note': note,
+            'date_order':  order.pay_date or order.order_date,      #付款时间
             'create_date': order.order_date,    #拍下时间
             'partner_id': partner_id,
             'picking_policy': 'direct',
@@ -89,7 +92,7 @@ class taobao_order(osv.osv):
             product_id = product_match_obj.find_product(cr, uid, line.product_id, context = context)
             qty = line.qty
             # 如果子订单行自动关闭或者已取消，则按照数量0发货
-            if line.line_state == 'close' or line.line_state == 'cancel':
+            if order.order_state != 'drop' and (line.line_state == 'close' or line.line_state == 'cancel'):
                 qty = 0
             sale_line = self.create_sale_order_line(cr, uid, product_id, partner_id, order_val['pricelist_id'], qty, line.price_unit, context=context)
             order_val['order_line'].append(sale_line)
