@@ -17,6 +17,7 @@
     'init_xml': [],
     'data': [
         'wizard/taobao_order_sync_wizard.xml',
+        'view/sale_order_dates_view.xml',
         'view/taobao_view.xml',
         'taobao_action.xml'
      ],
