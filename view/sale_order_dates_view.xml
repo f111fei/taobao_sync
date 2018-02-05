@@ -1,0 +1,42 @@
+<?xml version="1.0"?>
+<openerp>
+    <data>
+
+        <record id="view_sale_orderfor" model="ir.ui.view">
+            <field name="name">sale.order.form.inherit6</field>
+            <field name="model">sale.order</field>
+            <field name="inherit_id" ref="sale.view_order_form"/>
+            <field name="arch" type="xml">
+                <group name="sale_pay" position="after">
+                    <group colspan="2" col="2" >
+                        <separator string="日期" colspan="2"/>
+                        <field name="send_date"/>
+                        <field name="done_date"/>
+                    </group>
+                </group>
+            </field>
+        </record>
+        <record id="view_order_tree_date" model="ir.ui.view">
+            <field name="model">sale.order</field>
+            <field name="inherit_id" ref="sale.view_order_tree"/>
+            <field name="arch" type="xml">
+                <field name="state" position="after">
+                    <field name="send_date"/>
+                    <field name="done_date"/>
+                </field>
+            </field>
+        </record>
+
+        <record id="view_quotation_tree_date" model="ir.ui.view">
+            <field name="model">sale.order</field>
+            <field name="inherit_id" ref="sale.view_quotation_tree"/>
+            <field name="arch" type="xml">
+                <field name="state" position="after">
+                    <field name="send_date"/>
+                    <field name="done_date"/>
+                </field>
+            </field>
+        </record>
+
+    </data>
+</openerp>
