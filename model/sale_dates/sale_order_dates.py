@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+import pytz
 from datetime import datetime, timedelta
 
 from openerp.osv import fields, osv
@@ -9,6 +10,26 @@ from openerp.tools import DEFAULT_SERVER_DATE_FORMAT, DEFAULT_SERVER_DATETIME_FO
 class sale_order_dates(osv.osv):
     """Add several date fields to Sale Orders, computed or user-entered"""
     _inherit = 'sale.order'
+
+    def local_day2utc_time(self, cr, uid, day, context=None):
+        context = context or {}
+        user = self.pool['res.users'].browse(cr, uid, uid)
+        tz_name = user.tz or context.get('tz') or 'UTC'
+        user_tz = pytz.timezone(tz_name)
+        day_time = datetime.strptime(day, DEFAULT_SERVER_DATE_FORMAT)
+        utc_time = user_tz.localize(day_time).astimezone(pytz.utc)
+        utc_time = utc_time.strftime(DEFAULT_SERVER_DATETIME_FORMAT)
+        return utc_time
+
+    def utc_time2local_day(self, cr, uid, time, context=None):
+        context = context or {}
+        user = self.pool['res.users'].browse(cr, uid, uid)
+        tz_name = user.tz or context.get('tz') or 'UTC'
+        user_tz = pytz.timezone(tz_name)
+        utc_time = datetime.strptime(time, DEFAULT_SERVER_DATETIME_FORMAT)
+        local_time = user_tz.fromutc(utc_time)
+        local_day = local_time.strftime(DEFAULT_SERVER_DATE_FORMAT)
+        return local_day
 
     def _get_send_date(self, cr, uid, ids, name, arg, context=None):
         """Compute the send date"""
@@ -22,7 +43,7 @@ class sale_order_dates(osv.osv):
             if not order.picking_ids or len(order.picking_ids) == 0:
                 # 使用确认日期做为发货日期
                 if order.date_confirm:
-                    send_date = datetime.strptime(order.date_confirm, DEFAULT_SERVER_DATE_FORMAT).strftime(DEFAULT_SERVER_DATETIME_FORMAT)
+                    send_date = self.local_day2utc_time(cr, uid, order.date_confirm, context=context)
                     dates_list.append(send_date)
                 else:
                     has_send = False
@@ -70,7 +91,7 @@ class sale_order_dates(osv.osv):
                 send_date = order.send_date or self._get_send_date(cr, uid, [order.id], 'send_date', arg, context=context)[order.id]
                 # 转换发货时间为发货日期
                 if send_date:
-                    send_date = datetime.strptime(send_date, DEFAULT_SERVER_DATETIME_FORMAT).strftime(DEFAULT_SERVER_DATE_FORMAT)
+                    send_date = self.utc_time2local_day(cr, uid, send_date)
                     dates_list.append(send_date)
                 paid_date = self._get_invoice_paid_date(cr, uid, [order.id], name, arg, context=context)[order.id]
                 if not paid_date:

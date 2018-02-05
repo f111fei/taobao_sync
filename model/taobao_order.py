@@ -2,6 +2,7 @@
 
 from datetime import datetime, timedelta
 from openerp.osv import fields,osv
+from openerp.tools import DEFAULT_SERVER_DATE_FORMAT, DEFAULT_SERVER_DATETIME_FORMAT
 
 class taobao_order(osv.osv):
     _name = 'taobao.order'
@@ -129,6 +130,9 @@ class taobao_order(osv.osv):
 
         self.assets_state(cr, uid, taobao_order, context = context)
 
+        def datetime2day(time):
+            return (datetime.strptime(time, '%Y-%m-%d %H:%M:%S') + timedelta(hours=8)).strftime(DEFAULT_SERVER_DATE_FORMAT)
+
         # 取消订单
         if taobao_order.order_state == 'drop':
             order_obj.action_cancel(cr, uid, order_ids, context = context)
@@ -146,9 +150,10 @@ class taobao_order(osv.osv):
         if sale_order.state == 'draft':
             order_obj.action_button_confirm(cr, uid, order_ids, context = context)
 
-        # 服务类产品销售订单
+        # 服务类产品销售订单, 确认日期改为发货日期
         if not sale_order.picking_ids or len(sale_order.picking_ids) == 0:
-            order_obj.write(cr, uid, [sale_order.id], { 'date_confirm': taobao_order.delivery_date }, context = context)
+            day_date = datetime2day(taobao_order.delivery_date)
+            order_obj.write(cr, uid, [sale_order.id], { 'date_confirm': day_date }, context = context)
         
         if taobao_order.order_state == 'paid':
             return True
@@ -193,7 +198,8 @@ class taobao_order(osv.osv):
         
         for inv in sale_order.invoice_ids:
             if inv.state == 'draft':
-                inv.write({'date_invoice': taobao_order.delivery_date, 'date_due': taobao_order.delivery_date})
+                day_date = datetime2day(taobao_order.delivery_date)
+                inv.write({'date_invoice': day_date, 'date_due': day_date})
                 invoice_obj.signal_workflow(cr, uid, [inv.id], 'invoice_open')
 
         if taobao_order.order_state == 'send':
@@ -207,9 +213,10 @@ class taobao_order(osv.osv):
             if inv.state != 'open':
                 continue
             # 设置发票确认日期
-            inv = inv.with_context(date_p=taobao_order.end_date)
-            inv.write({'date_due': taobao_order.end_date})
-            period = inv.period_id.with_context(context).find(taobao_order.end_date)[:1]
+            day_date = datetime2day(taobao_order.end_date)
+            inv = inv.with_context(date_p=day_date)
+            inv.write({'date_due': day_date})
+            period = inv.period_id.with_context(context).find(day_date)[:1]
             inv.pay_and_reconcile(
                 pay_amount=inv.amount_total,
                 pay_account_id=journal.default_debit_account_id.id,

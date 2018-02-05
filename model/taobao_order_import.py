@@ -144,7 +144,7 @@ class taobao_order_import(osv.osv_memory):
         format = '%Y-%m-%d %H:%M'
         if re.search(r'\d+-\d+-\d+ \d+:\d+:\d+', time):
             format = '%Y-%m-%d %H:%M:%S'
-        return (datetime.strptime(time, format,) - timedelta(hours=8)).strftime(format)
+        return (datetime.strptime(time, format,) - timedelta(hours=8)).strftime('%Y-%m-%d %H:%M:%S')
 
     def create_order_vals(self, order):
         vals = {
