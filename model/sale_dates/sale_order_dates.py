@@ -17,6 +17,16 @@ class sale_order_dates(osv.osv):
         for order in self.browse(cr, uid, ids, context=context):
             dates_list = []
             has_send = True
+
+            # 服务类产品销售订单
+            if not order.picking_ids or len(order.picking_ids) == 0:
+                # 使用确认日期做为发货日期
+                if order.date_confirm:
+                    send_date = datetime.strptime(order.date_confirm, DEFAULT_SERVER_DATE_FORMAT).strftime(DEFAULT_SERVER_DATETIME_FORMAT)
+                    dates_list.append(send_date)
+                else:
+                    has_send = False
+
             for pick in order.picking_ids:
                 if pick.state == 'done':
                     dates_list.append(pick.date_done)
@@ -58,12 +68,10 @@ class sale_order_dates(osv.osv):
                 res[order.id] = False
             else:
                 send_date = order.send_date or self._get_send_date(cr, uid, [order.id], 'send_date', arg, context=context)[order.id]
-                if not send_date:
-                    res[order.id] = False
-                    continue
                 # 转换发货时间为发货日期
-                send_date = datetime.strptime(send_date, DEFAULT_SERVER_DATETIME_FORMAT).strftime(DEFAULT_SERVER_DATE_FORMAT)
-                dates_list.append(send_date)
+                if send_date:
+                    send_date = datetime.strptime(send_date, DEFAULT_SERVER_DATETIME_FORMAT).strftime(DEFAULT_SERVER_DATE_FORMAT)
+                    dates_list.append(send_date)
                 paid_date = self._get_invoice_paid_date(cr, uid, [order.id], name, arg, context=context)[order.id]
                 if not paid_date:
                     res[order.id] = False
@@ -88,6 +96,7 @@ class sale_order_dates(osv.osv):
 
     _columns = {
         'send_date': fields.function(_get_send_date, type='datetime', store={
+                'sale.order': (lambda self, cr, uid, ids, c={}: ids, ['date_confirm'], 10),
                 'stock.picking': (_get_orders, ['id', 'state', 'date_done'], 10)
             },
             string=u'发货时间',

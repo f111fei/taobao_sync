@@ -145,6 +145,10 @@ class taobao_order(osv.osv):
         # 已支付，先确认订单
         if sale_order.state == 'draft':
             order_obj.action_button_confirm(cr, uid, order_ids, context = context)
+
+        # 服务类产品销售订单
+        if not sale_order.picking_ids or len(sale_order.picking_ids) == 0:
+            order_obj.write(cr, uid, [sale_order.id], { 'date_confirm': taobao_order.delivery_date }, context = context)
         
         if taobao_order.order_state == 'paid':
             return True
@@ -173,8 +177,8 @@ class taobao_order(osv.osv):
                 'active_id': len(pick.ids) and pick.ids[0] or False
             })
             # 设置发货时间
-            stock_picking_obj.write(cr, uid, pick.ids, {'date_done': taobao_order.delivery_date}, context=context)
             stock_picking_obj.do_transfer(cr, uid, pick.ids, context = pick_context)
+            stock_picking_obj.write(cr, uid, pick.ids, {'date_done': taobao_order.delivery_date}, context=context)
             for move_line in pick.move_lines:
                 stock_move_obj.write(cr, uid, move_line.ids, {'date': taobao_order.delivery_date}, context=context)
 
