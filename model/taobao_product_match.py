@@ -15,10 +15,14 @@ class taobao_product_match(osv.osv):
         ('name_uniq', 'unique(name)', '淘宝产品名 must be unique!')
     ]
 
-    def find_product(self, cr, uid, name, context=None):
-        match_ids = self.search(cr, uid, [('name', '=', name)], context = context)
+    def find_product(self, cr, uid, product_id, product_code, context=None):
+        match_ids = []
+        if product_code:
+            match_ids = self.search(cr, uid, [('name', '=', product_code)], context = context)
+        if not match_ids or len(match_ids) < 1:
+            match_ids = self.search(cr, uid, [('name', '=', product_id)], context = context)
         if len(match_ids) == 1:
             match_obj = self.browse(cr, uid, match_ids[0], context=context)
             return match_obj.product_id.id
         else:
-            raise osv.except_osv(u'匹配错误', u'找不到匹配的产品: "%s"' % (name))
+            raise osv.except_osv(u'匹配错误', u'找不到匹配的产品: "%s"' % (product_id))

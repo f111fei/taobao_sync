@@ -90,7 +90,7 @@ class taobao_order(osv.osv):
 
         for line in order.order_line:
             #添加订单明细行
-            product_id = product_match_obj.find_product(cr, uid, line.product_id, context = context)
+            product_id = product_match_obj.find_product(cr, uid, line.product_id, line.product_code, context = context)
             qty = line.qty
             # 如果子订单行自动关闭或者已取消，则按照数量0发货
             if order.order_state != 'drop' and (line.line_state == 'close' or line.line_state == 'cancel'):
@@ -244,6 +244,7 @@ class taobao_order_line(osv.osv):
     _columns = {
         'order_id': fields.many2one('taobao.order', u'订单', required=True, ondelete='cascade', select=True, readonly=True),
         'product_id': fields.char(u'名称'),
+        'product_code': fields.char(u'属性编码'),
         'qty': fields.float(u'数量'),
         'price_unit': fields.float(u'单价', required=True),
         'line_state': fields.selection([

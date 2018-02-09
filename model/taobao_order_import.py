@@ -29,6 +29,7 @@ keymap[u'订单状态'] = 'order_state'
 keymap[u'收件人信息'] = 'buyer_detail'
 keymap[u'收件人'] = 'buyer_detail'
 keymap[u'属性'] = 'product_id'
+keymap[u'属性商家编码'] = 'product_code'
 keymap[u'数量'] = 'qty'
 keymap[u'实际单价'] = 'price_unit'
 keymap[u'子订单状态'] = 'line_state'
@@ -36,7 +37,9 @@ keymap[u'总价'] = 'total_price'
 
 order_statemap = {
     u'等待买家付款': 'not_paid',
+    u'等待付款': 'not_paid',
     u'买家已付款': 'paid',
+    u'等待发货': 'paid',
     u'卖家已发货': 'send',
     u'已发货': 'send',
     u'交易成功': 'success',
@@ -51,6 +54,7 @@ order_line_statemap = {
     u'等待付款': 'wait_pay',
     u'等待发货': 'wait_send',
     u'卖家已发货': 'send',
+    u'已发货': 'send',
     u'交易成功': 'success',
     u'自动关闭': 'close',
     u'已取消': 'cancel'
@@ -197,11 +201,13 @@ class taobao_order_import(osv.osv_memory):
         def create_line(order):
             line = {
                 'product_id': order['product_id'],
+                'product_code': order['product_code'],
                 'qty': order['qty'],
                 'price_unit': order['price_unit'],
                 'line_state': order_line_statemap[order['line_state']]
             }
             del order['product_id']
+            del order['product_code']
             del order['qty']
             del order['price_unit']
             del order['line_state']
